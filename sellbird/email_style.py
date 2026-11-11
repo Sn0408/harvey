@@ -185,27 +185,50 @@ _SIGN_OFF_RE = re.compile(
     re.IGNORECASE)
 
 
-def with_sign_off(body: str, name: str) -> str:
-    """``body`` ending in the sender's first name on its own line, and no
-    other sign-off.
+def sign_off_text(name: str, sign_off: str = "") -> str:
+    """What an email ends with: the operator's ``sign_off`` when set (one
+    line per line), else the sender's first name. "" when neither is set."""
+    lines = [line.strip() for line in (sign_off or "").splitlines() if line.strip()]
+    if lines:
+        return "\n".join(lines)
+    return (name or "").strip().split(" ")[0] if (name or "").strip() else ""
 
+
+def without_sign_off(body: str, name: str, sign_off: str = "") -> str:
+    """``body`` with the sign-off ``with_sign_off`` added taken back off."""
+    closing = sign_off_text(name, sign_off)
+    if closing and (body or "").endswith("\n\n" + closing):
+        return body[: -len(closing) - 2].rstrip()
+    return body
+
+
+def with_sign_off(body: str, name: str, sign_off: str = "") -> str:
+    """``body`` ending in the sender's sign-off, and no other sign-off.
+
+    The sign-off is ``sign_off`` when set (persona.sign_off, e.g. name,
+    title and site on separate lines), else the sender's first name alone.
     Models sign off three different ways in ten emails ("Best,", "Thanks,",
-    none at all); one plain name under every email reads like a person who
-    writes a lot of email. An empty ``name`` leaves the body as it is."""
+    none at all); one plain sign-off under every email reads like a person
+    who writes a lot of email. An empty ``name`` and ``sign_off`` leave the
+    body as it is."""
     first = (name or "").strip().split(" ")[0] if (name or "").strip() else ""
-    if not first:
+    closing = sign_off_text(name, sign_off)
+    if not closing:
         return body
     full = (name or "").strip().lower()
+    own = {line.lower().rstrip(",.") for line in closing.split("\n")}
+    own |= {n for n in (first.lower(), full) if n}
     lines = (body or "").rstrip().split("\n")
     while lines:
         last = lines[-1].strip().lstrip("-~ ").strip()
         low = last.lower().rstrip(",.")
-        if not last or _SIGN_OFF_RE.match(last) or low in (first.lower(), full):
+        if not last or _SIGN_OFF_RE.match(last) or low in own:
             lines.pop()
             continue
-        m = re.match(r"^(.*?)[,.]?\s+(?:-\s*)?" + re.escape(first) + r"\.?$", last, re.IGNORECASE)
+        m = first and re.match(r"^(.*?)[,.]?\s+(?:-\s*)?" + re.escape(first) + r"\.?$",
+                               last, re.IGNORECASE)
         if m and _SIGN_OFF_RE.match(m.group(1).strip() + ","):
             lines.pop()
             continue
         break
-    return "\n".join(lines).rstrip() + "\n\n" + first
+    return "\n".join(lines).rstrip() + "\n\n" + closing

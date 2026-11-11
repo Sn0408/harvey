@@ -18,7 +18,7 @@ from sellbird.brain import Brain
 from sellbird.config import EmailRulesError, SellbirdConfig, compliance_of, load_email_rules
 from sellbird.email_style import (
     BREAKUP_MAX_WORDS, FIRST_EMAIL_MAX_WORDS, FOLLOW_UP_MAX_WORDS,
-    style_problems, tidy, with_sign_off,
+    style_problems, tidy, with_sign_off, without_sign_off,
 )
 from sellbird.humanize import humanize, humanizer_enabled
 from sellbird.integrations.mail_provider import NATIVE_PROVIDERS
@@ -752,14 +752,20 @@ Return ONLY a JSON array (no markdown fences, no commentary):
         exclamation marks, no AI phrases, no formatting) still hold."""
         shape = not getattr(self, "email_rules", "")
 
+        persona = self.config.persona
+        sign_off = getattr(persona, "sign_off", "")
+
         def finish(d: dict) -> dict:
             body = tidy(str(d.get("body") or ""))
             if shape:
-                body = with_sign_off(body, self.config.persona.name)
+                body = with_sign_off(body, persona.name, sign_off)
             return {**d, "subject": tidy(str(d.get("subject") or "")), "body": body}
 
         def problems(d: dict) -> list[str]:
-            return style_problems(d["subject"], d["body"], kind="cold", step=step,
+            # A custom sign-off (name, title, site) is the operator's, not the
+            # email's: it doesn't count against the word cap.
+            body = without_sign_off(d["body"], persona.name, sign_off) if sign_off else d["body"]
+            return style_problems(d["subject"], body, kind="cold", step=step,
                                   names=names, shape=shape)
 
         draft = finish(draft)
@@ -782,9 +788,8 @@ Return ONLY a JSON array (no markdown fences, no commentary):
         body = draft["body"]
         if shape:
             # The sign-off is Sellbird's; the model never sees or writes it.
-            first = (self.config.persona.name or "").strip().split(" ")[0]
-            if first and body.endswith("\n\n" + first):
-                body = body[: -len(first) - 2].rstrip()
+            body = without_sign_off(body, self.config.persona.name,
+                                    getattr(self.config.persona, "sign_off", ""))
         payload = {"subject": draft["subject"], "body": body}
         problems = "\n".join(f"- It {p}." for p in found)
         prompt = f"""This cold email (email {step} of a sequence) breaks Sellbird's writing rules:

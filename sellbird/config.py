@@ -39,6 +39,15 @@ class PersonaConfig(BaseModel):
     email: str
     linkedin: str
     tone: str
+    # What every cold email ends with, one line per line ("Jo Park\nFounder,
+    # example.com"). Empty: the sender's first name alone.
+    sign_off: str = ""
+
+    @field_validator("sign_off", mode="before")
+    @classmethod
+    def _clean_sign_off(cls, v):
+        lines = [line.strip() for line in str(v or "").splitlines()]
+        return "\n".join(line for line in lines if line)
 
 
 class OfferConfig(BaseModel):

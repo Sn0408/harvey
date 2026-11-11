@@ -99,6 +99,37 @@ def test_no_persona_name_leaves_the_body_alone():
     assert with_sign_off("Who runs ops?\n\nBest,\nJo", "") == "Who runs ops?\n\nBest,\nJo"
 
 
+CUSTOM = "Alex Kim\nFounder, example.com"
+
+
+@pytest.mark.parametrize("body", [
+    "Who runs ops?\n\nBest,\nAlex",
+    "Who runs ops?\n\nAlex Kim\nFounder, example.com",
+    "Who runs ops?\n\nThanks,\nAlex Kim\nFounder, example.com",
+    "Who runs ops?",
+])
+def test_a_custom_sign_off_replaces_the_first_name(body):
+    assert with_sign_off(body, "Alex Kim", CUSTOM) == "Who runs ops?\n\n" + CUSTOM
+
+
+def test_a_custom_sign_off_is_normalised_and_comes_back_off():
+    from sellbird.email_style import sign_off_text, without_sign_off
+    assert sign_off_text("Alex Kim", "  Alex Kim \n\n Founder, example.com  ") == CUSTOM
+    signed = with_sign_off("Who runs ops?", "Alex Kim", CUSTOM)
+    assert without_sign_off(signed, "Alex Kim", CUSTOM) == "Who runs ops?"
+    assert without_sign_off("Who runs ops?\n\nAlex", "Alex Kim") == "Who runs ops?"
+
+
+def test_the_sign_off_setting_is_cleaned_on_load():
+    from sellbird.config import PersonaConfig
+    p = PersonaConfig(name="Alex Kim", company="Example", role="Founder",
+                      email="alex@example.com", linkedin="", tone="plain",
+                      sign_off="Alex Kim\n\n  Founder, example.com ")
+    assert p.sign_off == CUSTOM
+    assert PersonaConfig(name="Alex Kim", company="Example", role="Founder",
+                         email="alex@example.com", linkedin="", tone="plain").sign_off == ""
+
+
 # ── The Writer enforces them ──────────────────────────────────────────────
 
 class FixingBrain:
